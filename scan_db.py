@@ -90,3 +90,31 @@ class ScanDB:
         except Error as e:
             print(f"Error inserting scan record: {e}")
             return None
+
+    def get_patient_by_id(self, patient_id):
+        """
+        Retrieve patient details by patient ID
+
+        Args:
+            patient_id (str): The ID of the patient to retrieve
+
+        Returns:
+            dict: Dictionary containing patient details or None if not found
+        """
+        if not self.connect():
+            return None
+
+        try:
+            query = """
+            SELECT * FROM patient 
+            WHERE id = %s
+            """
+
+            self.cursor.execute(query, (patient_id,))
+            result = self.cursor.fetchone()
+
+            return result  # Returns None if no patient found
+
+        except Error as e:
+            print(f"Error retrieving patient record: {e}")
+            return None

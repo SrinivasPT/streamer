@@ -1,18 +1,23 @@
 # wss_server.py
 import asyncio
+import os
 import time
+from dotenv import load_dotenv
 import uvicorn
+import re
 from contextlib import asynccontextmanager
 from datetime import datetime
 from fastapi import FastAPI, WebSocket, WebSocketDisconnect
 from fastapi.responses import HTMLResponse
 from fastapi.middleware.cors import CORSMiddleware
+from scan_db import ScanDB
 
 # Store all active WebSocket connections
 active_connections = set()
 
 # In-memory "database" for alerts
 alerts_db = []
+load_dotenv()
 
 
 class ConnectionManager:
@@ -40,12 +45,52 @@ manager = ConnectionManager()
 
 
 async def alert_generator(file_name):
+    # Extract patient ID from the filename (format: patientid_gender_name.jpg)
+    match = re.search(r"^(\d+)_", file_name)
+    patient_id = match.group(1) if match else "unknown"
+
+    # Get patient details from database
+    db = ScanDB()
+    patient_info = db.get_patient_by_id(patient_id)
+
+    # Create patient info dict with defaults if patient not found
+    patient_data = {
+        "patient_id": patient_id,
+        "patient_name": "Unknown",
+        "patient_gender": "unknown",
+        "patient_date_of_birth": None,
+    }
+
+    # If patient was found in database, update with actual data
+    if patient_info:
+        # Using correct field names from the patient table
+        patient_data.update(
+            {
+                "patient_name": patient_info.get("patient_name", "Unknown"),
+                "patient_gender": patient_info.get("gender", "unknown"),
+                "patient_date_of_birth": patient_info.get("date_of_birth"),
+            }
+        )
+
+        # Convert date_of_birth to string if it exists
+        if patient_data["patient_date_of_birth"]:
+            patient_data["patient_date_of_birth"] = patient_data[
+                "patient_date_of_birth"
+            ].isoformat()
+
+    # Create flattened alert structure with patient info at root level
     new_alert = {
         "id": int(time.time()),
         "title": "Alert: Paralysis Detected",
         "imageName": file_name,
         "timestamp": datetime.now().isoformat(),
+        "patientId": patient_data["patient_id"],
+        "patientName": patient_data["patient_name"],
+        "patientGender": patient_data["patient_gender"],
+        "patientDateOfBirth": patient_data["patient_date_of_birth"],
+        "filePath": file_name,
     }
+
     print(f"Alert Generator -> Processing file: {file_name}, Alert Data: {new_alert}")
     alerts_db.append(new_alert)
 
